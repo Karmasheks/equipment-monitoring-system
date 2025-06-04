@@ -1,0 +1,26 @@
+{
+  "name": "equipment-monitoring-system",
+  "version": "1.0.0",
+  "description": "Comprehensive task and equipment management platform for maintenance tracking and team collaboration",
+  "main": "server/index.ts",
+  "scripts": {
+    "dev": "NODE_ENV=development tsx server/index.ts",
+    "build": "tsc && vite build",
+    "start": "NODE_ENV=production node dist/server/index.js",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "lint": "eslint . --ext .ts,.tsx",
+    "test": "vitest"
+  },
+  "keywords": ["equipment", "monitoring", "maintenance", "industrial", "react", "typescript"],
+  "author": "Equipment Monitoring Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Karmasheks/equipment-monitoring-system.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Karmasheks/equipment-monitoring-system/issues"
+  },
+  "homepage": "https://github.com/Karmasheks/equipment-monitoring-system#readme"
+}
