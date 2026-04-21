@@ -154,8 +154,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Регистрация успешна! Вы получили права просмотра. Для расширения прав обратитесь к администратору."
       });
     } catch (error: any) {
-      return res.status(400).json({ message: error.message || "Ошибка регистрации" });
-    }
+  console.error("REGISTER ERROR:", error);
+  return res.status(400).json({
+    message: error?.message || "Ошибка регистрации",
+    details: error?.stack || null,
+  });
+}
   });
   
   app.post("/api/auth/login", async (req, res) => {
@@ -772,7 +776,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // MAINTENANCE RECORDS ROUTES
+// Helper function to safely parse and validate dates
+function parseDate(dateString: string | undefined | null, fieldName: string): Date | null {
+  if (!dateString) return null;
+  
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid ${fieldName} format: ${dateString}. Expected ISO date string (e.g., "2024-01-15T10:00:00Z")`);
+  }
+  return date;
+}
+
+// MAINTENANCE RECORDS ROUTES
   app.get("/api/maintenance", authenticate, async (req, res) => {
     try {
       const records = await storage.getAllMaintenanceRecords();
@@ -784,16 +799,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/maintenance", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
-      // Преобразуем строковые даты в объекты Date
+      // Safely parse and validate dates
+      const scheduledDate = parseDate(req.body.scheduledDate, "scheduledDate");
+      if (!scheduledDate) {
+        return res.status(400).json({ message: "scheduledDate is required and must be a valid date" });
+      }
+      
+      const completedDate = parseDate(req.body.completedDate, "completedDate");
+      
+      // Prepare processed data with validated dates
       const processedData = {
         ...req.body,
-        scheduledDate: new Date(req.body.scheduledDate),
-        completedDate: req.body.completedDate ? new Date(req.body.completedDate) : undefined,
+        scheduledDate,
+        completedDate,
       };
       
       const record = await storage.createMaintenanceRecord(processedData);
       return res.status(201).json(record);
     } catch (error: any) {
+      console.error("MAINTENANCE CREATE ERROR:", error);
+      if (error.message.includes("Invalid")) {
+        return res.status(400).json({ message: error.message });
+      }
       return res.status(500).json({ message: error.message });
     }
   });
@@ -802,11 +829,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       
-      // Преобразуем строковые даты в объекты Date
+      // Safely parse and validate dates (optional for updates)
+      const scheduledDate = req.body.scheduledDate ? parseDate(req.body.scheduledDate, "scheduledDate") : undefined;
+      const completedDate = req.body.completedDate ? parseDate(req.body.completedDate, "completedDate") : undefined;
+      
+      // Prepare processed data with validated dates
       const processedData = {
         ...req.body,
-        scheduledDate: req.body.scheduledDate ? new Date(req.body.scheduledDate) : undefined,
-        completedDate: req.body.completedDate ? new Date(req.body.completedDate) : undefined,
+        ...(scheduledDate !== undefined && { scheduledDate }),
+        ...(completedDate !== undefined && { completedDate }),
       };
       
       const record = await storage.updateMaintenanceRecord(id, processedData);
@@ -815,6 +846,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       return res.status(200).json(record);
     } catch (error: any) {
+      console.error("MAINTENANCE UPDATE ERROR:", error);
+      if (error.message.includes("Invalid")) {
+        return res.status(400).json({ message: error.message });
+      }
       return res.status(500).json({ message: error.message });
     }
   });
