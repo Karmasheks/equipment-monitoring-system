@@ -37,8 +37,20 @@ export async function login(email: string, password: string): Promise<AuthRespon
   }
 }
 
-export async function register(name: string, email: string, password: string): Promise<AuthResponse> {
-  const response = await apiRequest("POST", "/api/auth/register", { name, email, password, role: "user" });
+export async function register(
+  name: string,
+  email: string,
+  password: string,
+  confirmPassword: string,
+  position?: string
+): Promise<AuthResponse> {
+  const response = await apiRequest("POST", "/api/auth/register", {
+    name,
+    email,
+    password,
+    confirmPassword,
+    position,
+  });
   const data = await response.json();
   
   // Store token in localStorage
