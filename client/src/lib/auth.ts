@@ -8,7 +8,6 @@ export interface AuthResponse {
 
 export async function login(email: string, password: string): Promise<AuthResponse> {
   try {
-    // Делаем прямой fetch запрос без apiRequest для обработки ошибок входа
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: {
@@ -17,38 +16,47 @@ export async function login(email: string, password: string): Promise<AuthRespon
       body: JSON.stringify({ email, password }),
       credentials: "include",
     });
-    
+
     const data = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(data.message || "Неверные учетные данные");
     }
-    
+
     if (!data.token || !data.user) {
       throw new Error("Получен неполный ответ от сервера");
     }
-    
-    // Store token in localStorage
+
     localStorage.setItem("token", data.token);
-    
+
     return data;
   } catch (error: any) {
     throw new Error(error.message || "Ошибка входа в систему");
   }
 }
 
-export async function register(name: string, email: string, password: string): Promise<AuthResponse> {
-  const response = await apiRequest("POST", "/api/auth/register", { name, email, password, role: "user" });
+export async function register(
+  name: string,
+  email: string,
+  password: string,
+  confirmPassword: string,
+  position?: string
+): Promise<AuthResponse> {
+  const response = await apiRequest("POST", "/api/auth/register", {
+    name,
+    email,
+    password,
+    confirmPassword,
+    position,
+  });
+
   const data = await response.json();
-  
-  // Store token in localStorage
   localStorage.setItem("token", data.token);
-  
+
   return data;
 }
 
 export async function logout(): Promise<void> {
-  // Remove token from localStorage
   localStorage.removeItem("token");
 }
 

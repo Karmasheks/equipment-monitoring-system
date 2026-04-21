@@ -13,19 +13,12 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const token = getToken();
 
   useEffect(() => {
-    // Простая проверка - есть токен или нет
-    if (!token) {
+    if (!isLoading && (!token || !user)) {
       setLocation("/login");
     }
-  }, [token, setLocation]);
+  }, [token, user, isLoading, setLocation]);
 
-  // Если нет токена, перенаправляем
-  if (!token) {
-    return null;
-  }
-
-  // Показываем загрузку только при первоначальной загрузке пользователя
-  if (isLoading && !user) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
@@ -36,6 +29,9 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  // Рендерим контент если есть токен
+  if (!token || !user) {
+    return null;
+  }
+
   return <>{children}</>;
 }

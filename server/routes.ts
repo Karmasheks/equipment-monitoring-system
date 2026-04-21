@@ -17,16 +17,37 @@ import session from "express-session";
 import MemoryStore from "memorystore";
 
 // JWT secret key
-const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
+const DISALLOWED_DEFAULT_SECRETS = new Set([
+  "your_jwt_secret",
+  "your_session_secret",
+  "changeme",
+  "default",
+  "secret",
+  "password",
+]);
+
+function requireSecret(name: "JWT_SECRET" | "SESSION_SECRET"): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required and must not use an insecure default.`);
+  }
+  if (DISALLOWED_DEFAULT_SECRETS.has(value.toLowerCase()) || value.length < 32) {
+    throw new Error(`${name} is too weak. Use a random secret with at least 32 characters.`);
+  }
+  return value;
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+  const jwtSecret = requireSecret("JWT_SECRET");
+  const sessionSecret = requireSecret("SESSION_SECRET");
+  const writeRoles = ["admin", "operator", "engineer", "technician"];
   
   // Session setup
   const SessionStore = MemoryStore(session);
   app.use(
     session({
-      secret: process.env.SESSION_SECRET || "your_session_secret",
+      secret: sessionSecret,
       resave: false,
       saveUninitialized: false,
       cookie: { secure: process.env.NODE_ENV === "production", maxAge: 86400000 }, // 1 day
@@ -37,18 +58,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
   
   // Auth middleware
-  const authenticate = (req: Request, res: Response, next: Function) => {
-    const token = req.headers.authorization?.split(" ")[1];
-    
+   const authenticate = async (req: Request, res: Response, next: Function) => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
+    const token = authHeader.slice("Bearer ".length).trim();
+
     if (!token) {
       return res.status(401).json({ message: "Authentication required" });
     }
-    
+
     try {
-      const decoded: any = jwt.verify(token, JWT_SECRET);
-      req.user = decoded;
+      const decoded = jwt.verify(token, jwtSecret) as { id?: number; email?: string; role?: string };
+
+      if (!decoded?.id || !decoded?.email || !decoded?.role) {
+        return res.status(401).json({ message: "Invalid token payload" });
+      }
+
+      const user = await storage.getUser(decoded.id);
+
+      if (!user || !user.isActive) {
+        return res.status(401).json({ message: "User is inactive or not found" });
+      }
+
+      req.user = { id: user.id, email: user.email, role: user.role, name: user.name };
       next();
-    } catch (error) {
+    } catch (_error) {
       return res.status(401).json({ message: "Invalid or expired token" });
     }
   };
@@ -104,7 +142,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Generate JWT token
       const token = jwt.sign(
         { id: user.id, email: user.email, role: user.role },
-        JWT_SECRET,
+        jwtSecret,
         { expiresIn: "1d" }
       );
       
@@ -139,7 +177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Generate JWT token
       const token = jwt.sign(
         { id: user.id, email: user.email, role: user.role },
-        JWT_SECRET,
+        jwtSecret,
         { expiresIn: "1d" }
       );
       
@@ -305,7 +343,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.post("/api/tasks", authenticate, async (req, res) => {
+  app.post("/api/tasks", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       console.log('Received task data:', req.body);
       
@@ -339,7 +377,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.put("/api/tasks/:id", authenticate, async (req, res) => {
+  app.put("/api/tasks/:id", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       const taskId = parseInt(req.params.id);
       const task = await storage.getTask(taskId);
@@ -382,7 +420,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/tasks/:id", authenticate, async (req, res) => {
+  app.delete("/api/tasks/:id", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       const taskId = parseInt(req.params.id);
       const task = await storage.getTask(taskId);
@@ -699,7 +737,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/equipment", authenticate, async (req, res) => {
+  app.post("/api/equipment", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       const equipment = await storage.createEquipment(req.body);
       return res.status(201).json(equipment);
@@ -708,7 +746,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/equipment/:id", authenticate, async (req, res) => {
+  app.put("/api/equipment/:id", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       const { id } = req.params;
       const equipment = await storage.updateEquipment(id, req.body);
@@ -721,7 +759,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/equipment/:id", authenticate, async (req, res) => {
+  app.delete("/api/equipment/:id", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.deleteEquipment(id);
@@ -744,7 +782,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/maintenance", authenticate, async (req, res) => {
+  app.post("/api/maintenance", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       // Преобразуем строковые даты в объекты Date
       const processedData = {
@@ -760,7 +798,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/maintenance/:id", authenticate, async (req, res) => {
+  app.put("/api/maintenance/:id", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       
@@ -781,7 +819,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/maintenance/:id", authenticate, async (req, res) => {
+  app.delete("/api/maintenance/:id", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteMaintenanceRecord(id);
@@ -804,7 +842,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/remarks", authenticate, async (req, res) => {
+  app.post("/api/remarks", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       const remark = await storage.createRemark(req.body);
       return res.status(201).json(remark);
@@ -813,7 +851,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/remarks/:id", authenticate, async (req, res) => {
+  app.put("/api/remarks/:id", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       const { id } = req.params;
       const remark = await storage.updateRemark(id, req.body);
@@ -826,7 +864,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/remarks/:id", authenticate, async (req, res) => {
+  app.delete("/api/remarks/:id", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.deleteRemark(id);
@@ -921,7 +959,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/daily-inspections", authenticate, async (req, res) => {
+  app.post("/api/daily-inspections", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       const inspectionData = {
         ...req.body,
@@ -935,7 +973,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/daily-inspections/:id", authenticate, async (req, res) => {
+  app.put("/api/daily-inspections/:id", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const inspectionData = {
@@ -952,7 +990,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/daily-inspections/:id", authenticate, async (req, res) => {
+  app.delete("/api/daily-inspections/:id", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteDailyInspection(id);
