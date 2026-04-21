@@ -42,7 +42,7 @@ export function RegisterForm() {
   const onSubmit = async (data: RegisterFormValues) => {
     setIsLoading(true);
     try {
-      await register(data.name, data.email, data.password);
+      await register(data.name, data.email, data.password, data.confirmPassword);
       toast({
         title: "Регистрация успешна",
         description: "Ваш аккаунт был создан",
