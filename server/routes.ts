@@ -837,95 +837,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
 // Helper function to safely parse and validate dates
-function parseDate(dateString: string | undefined | null, fieldName: string): Date | null {
-  if (!dateString) return null;
-  
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) {
-    throw new Error(`Invalid ${fieldName} format: ${dateString}. Expected ISO date string (e.g., "2024-01-15T10:00:00Z")`);
+function parseMaintenanceDate(value: unknown): Date | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
   }
-  return date;
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 // MAINTENANCE RECORDS ROUTES
-  app.get("/api/maintenance", authenticate, async (req, res) => {
-    try {
-      const records = await storage.getAllMaintenanceRecords();
-      return res.status(200).json(records);
-    } catch (error: any) {
-      return res.status(500).json({ message: error.message });
-    }
-  });
+app.get("/api/maintenance", authenticate, async (req, res) => {
+  try {
+    const records = await storage.getAllMaintenanceRecords();
+    return res.status(200).json(records);
+  } catch (error: any) {
+    return res.status(500).json({ message: error.message });
+  }
+});
 
-  app.post("/api/maintenance", authenticate, requireRole(writeRoles), async (req, res) => {
-    try {
-      // Safely parse and validate dates
-      const scheduledDate = parseDate(req.body.scheduledDate, "scheduledDate");
+app.post("/api/maintenance", authenticate, requireRole(writeRoles), async (req, res) => {
+  try {
+    console.log("MAINTENANCE CREATE BODY:", req.body);
+
+    const scheduledDate = parseMaintenanceDate(req.body.scheduledDate);
+    const completedDate = parseMaintenanceDate(req.body.completedDate);
+
+    if (!scheduledDate) {
+      return res.status(400).json({ message: "Некорректная scheduledDate" });
+    }
+
+    if (req.body.completedDate !== undefined && req.body.completedDate !== null && req.body.completedDate !== "" && !completedDate) {
+      return res.status(400).json({ message: "Некорректная completedDate" });
+    }
+
+    const record = await storage.createMaintenanceRecord({
+      equipmentId: String(req.body.equipmentId ?? ""),
+      equipmentName: String(req.body.equipmentName ?? ""),
+      maintenanceType: String(req.body.maintenanceType ?? ""),
+      scheduledDate,
+      completedDate,
+      responsible: String(req.body.responsible ?? ""),
+      status: String(req.body.status ?? "scheduled"),
+      priority: String(req.body.priority ?? "medium"),
+      notes: req.body.notes ? String(req.body.notes) : null,
+      duration: req.body.duration ? String(req.body.duration) : null,
+    });
+
+    return res.status(201).json(record);
+  } catch (error: any) {
+    console.error("MAINTENANCE CREATE ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.put("/api/maintenance/:id", authenticate, requireRole(writeRoles), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    const updateData: any = {
+      equipmentId: req.body.equipmentId !== undefined ? String(req.body.equipmentId) : undefined,
+      equipmentName: req.body.equipmentName !== undefined ? String(req.body.equipmentName) : undefined,
+      maintenanceType: req.body.maintenanceType !== undefined ? String(req.body.maintenanceType) : undefined,
+      responsible: req.body.responsible !== undefined ? String(req.body.responsible) : undefined,
+      status: req.body.status !== undefined ? String(req.body.status) : undefined,
+      priority: req.body.priority !== undefined ? String(req.body.priority) : undefined,
+      notes: req.body.notes !== undefined ? (req.body.notes ? String(req.body.notes) : null) : undefined,
+      duration: req.body.duration !== undefined ? (req.body.duration ? String(req.body.duration) : null) : undefined,
+    };
+
+    if (req.body.scheduledDate !== undefined) {
+      const scheduledDate = parseMaintenanceDate(req.body.scheduledDate);
       if (!scheduledDate) {
-        return res.status(400).json({ message: "scheduledDate is required and must be a valid date" });
+        return res.status(400).json({ message: "Некорректная scheduledDate" });
       }
-      
-      const completedDate = parseDate(req.body.completedDate, "completedDate");
-      
-      // Prepare processed data with validated dates
-      const processedData = {
-        ...req.body,
-        scheduledDate,
-        completedDate,
-      };
-      
-      const record = await storage.createMaintenanceRecord(processedData);
-      return res.status(201).json(record);
-    } catch (error: any) {
-      console.error("MAINTENANCE CREATE ERROR:", error);
-      if (error.message.includes("Invalid")) {
-        return res.status(400).json({ message: error.message });
-      }
-      return res.status(500).json({ message: error.message });
+      updateData.scheduledDate = scheduledDate;
     }
-  });
 
-  app.put("/api/maintenance/:id", authenticate, requireRole(writeRoles), async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      
-      // Safely parse and validate dates (optional for updates)
-      const scheduledDate = req.body.scheduledDate ? parseDate(req.body.scheduledDate, "scheduledDate") : undefined;
-      const completedDate = req.body.completedDate ? parseDate(req.body.completedDate, "completedDate") : undefined;
-      
-      // Prepare processed data with validated dates
-      const processedData = {
-        ...req.body,
-        ...(scheduledDate !== undefined && { scheduledDate }),
-        ...(completedDate !== undefined && { completedDate }),
-      };
-      
-      const record = await storage.updateMaintenanceRecord(id, processedData);
-      if (!record) {
-        return res.status(404).json({ message: "Запись о техобслуживании не найдена" });
+    if (req.body.completedDate !== undefined) {
+      if (req.body.completedDate === null || req.body.completedDate === "") {
+        updateData.completedDate = null;
+      } else {
+        const completedDate = parseMaintenanceDate(req.body.completedDate);
+        if (!completedDate) {
+          return res.status(400).json({ message: "Некорректная completedDate" });
+        }
+        updateData.completedDate = completedDate;
       }
-      return res.status(200).json(record);
-    } catch (error: any) {
-      console.error("MAINTENANCE UPDATE ERROR:", error);
-      if (error.message.includes("Invalid")) {
-        return res.status(400).json({ message: error.message });
-      }
-      return res.status(500).json({ message: error.message });
     }
-  });
 
-  app.delete("/api/maintenance/:id", authenticate, requireRole(writeRoles), async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const deleted = await storage.deleteMaintenanceRecord(id);
-      if (!deleted) {
-        return res.status(404).json({ message: "Запись о техобслуживании не найдена" });
-      }
-      return res.status(200).json({ message: "Запись удалена" });
-    } catch (error: any) {
-      return res.status(500).json({ message: error.message });
+    const record = await storage.updateMaintenanceRecord(id, updateData);
+
+    if (!record) {
+      return res.status(404).json({ message: "Запись о техобслуживании не найдена" });
     }
-  });
+
+    return res.status(200).json(record);
+  } catch (error: any) {
+    console.error("MAINTENANCE UPDATE ERROR:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.delete("/api/maintenance/:id", authenticate, requireRole(writeRoles), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const deleted = await storage.deleteMaintenanceRecord(id);
+    if (!deleted) {
+      return res.status(404).json({ message: "Запись о техобслуживании не найдена" });
+    }
+    return res.status(200).json({ message: "Запись удалена" });
+  } catch (error: any) {
+    return res.status(500).json({ message: error.message });
+  }
+});
 
   // REMARKS ROUTES
   app.get("/api/remarks", authenticate, async (req, res) => {
