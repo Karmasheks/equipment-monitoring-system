@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import type { Equipment, InspectionChecklist, DailyInspection, InsertDailyInspection } from '../../../shared/schema';
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { 
@@ -159,9 +160,9 @@ const ChecklistAdminPanel = ({
   onSave, 
   getChecklistByEquipmentId 
 }: {
-  equipment: any[];
+  equipment: Equipment[];
   onSave: (equipmentId: string, equipmentName: string, selectedItems: ChecklistItem[]) => Promise<void>;
-  getChecklistByEquipmentId: (equipmentId: string) => any;
+  getChecklistByEquipmentId: (equipmentId: string) => InspectionChecklist | null;
 }) => {
   const [selectedEquipmentId, setSelectedEquipmentId] = useState("");
   const [selectedItems, setSelectedItems] = useState<ChecklistItem[]>([]);
@@ -352,16 +353,16 @@ export default function DailyInspection() {
   const queryClient = useQueryClient();
 
   // Загрузка оборудования из API
-  const { data: equipment = [] } = useQuery({
+  const { data: equipment = [] } = useQuery<Equipment[]>({
     queryKey: ['/api/equipment'],
   });
 
   // Фильтруем только активное оборудование (исключаем выведенное из эксплуатации)
-  const activeEquipment = equipment.filter((eq: any) => eq.status !== 'decommissioned');
+  const activeEquipment = equipment.filter((eq: Equipment) => eq.status !== 'decommissioned');
 
   // Мутация для создания ежедневного осмотра
   const createDailyInspectionMutation = useMutation({
-    mutationFn: async (inspectionData: any) => {
+    mutationFn: async (inspectionData: InsertDailyInspection) => {
       const token = localStorage.getItem('token');
       const response = await fetch('/api/daily-inspections', {
         method: 'POST',
@@ -392,7 +393,7 @@ export default function DailyInspection() {
   const [isAdminDialogOpen, setIsAdminDialogOpen] = useState(false);
 
   // Загрузка ежедневных осмотров из базы данных
-  const { data: dailyInspections = [] } = useQuery({
+  const { data: dailyInspections = [] } = useQuery<DailyInspection[]>({
     queryKey: ['/api/daily-inspections'],
   });
 
@@ -447,14 +448,14 @@ export default function DailyInspection() {
   useEffect(() => {
     if (dailyInspections.length > 0) {
       const today = format(new Date(), 'yyyy-MM-dd');
-      const todayInspections = dailyInspections.filter((inspection: any) => {
+      const todayInspections = dailyInspections.filter((inspection: DailyInspection) => {
         const inspectionDate = new Date(inspection.inspectionDate);
         return format(inspectionDate, 'yyyy-MM-dd') === today;
       });
 
       const inspectionsByEquipment: Record<string, EquipmentInspection> = {};
       
-      todayInspections.forEach((inspection: any) => {
+      todayInspections.forEach((inspection: DailyInspection) => {
         inspectionsByEquipment[inspection.equipmentId] = {
           equipmentId: inspection.equipmentId,
           status: 'completed',
@@ -634,7 +635,7 @@ export default function DailyInspection() {
   }, [inspectionItems, selectedEquipment]);
 
   // Функция загрузки элементов осмотра из базы данных
-  const loadInspectionItemsFromDatabase = (equipment: any, prioritizeProgress: boolean = true) => {
+  const loadInspectionItemsFromDatabase = (equipment: Equipment, prioritizeProgress: boolean = true) => {
     console.log('Загружаем элементы осмотра для оборудования:', equipment.id);
     
     // Загружаем чек-лист из базы данных первым делом
@@ -732,10 +733,10 @@ export default function DailyInspection() {
   }
 
   const categories = ["all", "Безопасность", "Механическая часть", "Гидравлика", "Электрика", "Пневматика", "Смазка", "Чистота", "Функциональность", "Система охлаждения", "Инструмент"];
-  const equipmentCategories = ["all", ...Array.from(new Set(activeEquipment.map((eq: any) => eq.type)))];
+  const equipmentCategories = ["all", ...Array.from(new Set(activeEquipment.map((eq: Equipment) => eq.type)))];
 
   // Фильтрация оборудования
-  const filteredEquipment = activeEquipment.filter((eq: any) => {
+  const filteredEquipment = activeEquipment.filter((eq: Equipment) => {
     const matchesSearch = eq.name.toLowerCase().includes(searchFilter.toLowerCase());
     const matchesCategory = categoryFilter === "all" || eq.type === categoryFilter;
     const inspection = equipmentInspections[eq.id];

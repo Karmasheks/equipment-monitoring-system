@@ -1,18 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import type { MaintenanceRecord, InsertMaintenanceRecord } from '../../../shared/schema';
 
 export function useMaintenanceApi() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   // Загрузка всех записей ТО
-  const { data: maintenanceRecords = [], isLoading, error } = useQuery({
+  const { data: maintenanceRecords = [], isLoading, error } = useQuery<MaintenanceRecord[]>({
     queryKey: ['/api/maintenance'],
   });
 
   // Создание новой записи ТО
   const addMaintenanceMutation = useMutation({
-    mutationFn: async (newRecord: any) => {
+    mutationFn: async (newRecord: InsertMaintenanceRecord) => {
       const response = await fetch('/api/maintenance', {
         method: 'POST',
         headers: {
@@ -21,13 +22,21 @@ export function useMaintenanceApi() {
         },
         body: JSON.stringify({
           ...newRecord,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          // Ensure dates are ISO strings, not Date objects
+          scheduledDate: newRecord.scheduledDate instanceof Date 
+            ? newRecord.scheduledDate.toISOString() 
+            : newRecord.scheduledDate,
+          completedDate: newRecord.completedDate instanceof Date
+            ? newRecord.completedDate.toISOString()
+            : newRecord.completedDate,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Ошибка создания записи ТО');
+        const error = await response.json();
+        throw new Error(error.message || 'Ошибка создания записи ТО');
       }
 
       return response.json();
@@ -39,10 +48,10 @@ export function useMaintenanceApi() {
         description: "Запись ТО создана",
       });
     },
-    onError: () => {
+    onError: (error: Error) => {
       toast({
         title: "Ошибка",
-        description: "Не удалось создать запись ТО",
+        description: error.message || "Не удалось создать запись ТО",
         variant: "destructive",
       });
     },
@@ -50,7 +59,7 @@ export function useMaintenanceApi() {
 
   // Обновление записи ТО
   const updateMaintenanceMutation = useMutation({
-    mutationFn: async ({ id, updates }: { id: number; updates: any }) => {
+    mutationFn: async ({ id, updates }: { id: number; updates: Partial<MaintenanceRecord> }) => {
       const response = await fetch(`/api/maintenance/${id}`, {
         method: 'PUT',
         headers: {
@@ -59,12 +68,20 @@ export function useMaintenanceApi() {
         },
         body: JSON.stringify({
           ...updates,
-          updatedAt: new Date(),
+          // Ensure dates are ISO strings, not Date objects
+          scheduledDate: updates.scheduledDate instanceof Date 
+            ? updates.scheduledDate.toISOString() 
+            : updates.scheduledDate,
+          completedDate: updates.completedDate instanceof Date
+            ? updates.completedDate.toISOString()
+            : updates.completedDate,
+          updatedAt: new Date().toISOString(),
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Ошибка обновления записи ТО');
+        const error = await response.json();
+        throw new Error(error.message || 'Ошибка обновления записи ТО');
       }
 
       return response.json();
@@ -76,10 +93,10 @@ export function useMaintenanceApi() {
         description: "Запись ТО обновлена",
       });
     },
-    onError: () => {
+    onError: (error: Error) => {
       toast({
         title: "Ошибка",
-        description: "Не удалось обновить запись ТО",
+        description: error.message || "Не удалось обновить запись ТО",
         variant: "destructive",
       });
     },
@@ -96,7 +113,8 @@ export function useMaintenanceApi() {
       });
 
       if (!response.ok) {
-        throw new Error('Ошибка удаления записи ТО');
+        const error = await response.json();
+        throw new Error(error.message || 'Ошибка удаления записи ТО');
       }
 
       return response.json();
@@ -119,13 +137,13 @@ export function useMaintenanceApi() {
 
   // Функции фильтрации
   const getMaintenanceByStatus = (status: string) => 
-    maintenanceRecords.filter((record: any) => record.status === status);
+    maintenanceRecords.filter((record: MaintenanceRecord) => record.status === status);
 
   const getMaintenanceByEquipment = (equipmentId: string) =>
-    maintenanceRecords.filter((record: any) => record.equipmentId === equipmentId);
+    maintenanceRecords.filter((record: MaintenanceRecord) => record.equipmentId === equipmentId);
 
   const getMaintenanceByDateRange = (startDate: Date, endDate: Date) =>
-    maintenanceRecords.filter((record: any) => {
+    maintenanceRecords.filter((record: MaintenanceRecord) => {
       const recordDate = new Date(record.scheduledDate);
       return recordDate >= startDate && recordDate <= endDate;
     });

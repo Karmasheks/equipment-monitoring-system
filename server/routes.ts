@@ -1,10 +1,14 @@
 import type { Express, Request, Response } from "express";
+import type { User } from "../shared/schema";
+
+// Type for authenticated user
+export type AuthenticatedUser = Pick<User, 'id' | 'email' | 'role' | 'name'>;
 
 // Extend Express Request type to include user
 declare global {
   namespace Express {
     interface Request {
-      user?: any;
+      user?: AuthenticatedUser;
     }
   }
 }
@@ -104,6 +108,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       next();
     };
+  };
+
+  // Type assertion helper for authenticated requests
+  const assertAuthenticated = (req: Request): req is Request & { user: AuthenticatedUser } => {
+    return req.user !== undefined;
   };
   
   // AUTH ROUTES
@@ -207,6 +216,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.get("/api/auth/me", authenticate, async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       const user = await storage.getUser(req.user.id);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -234,6 +247,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post("/api/roles", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       const role = await storage.createRole(req.body);
       
       // Create activity
@@ -253,6 +270,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.put("/api/roles/:id", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       const roleId = parseInt(req.params.id);
       const updatedRole = await storage.updateRole(roleId, req.body);
       
@@ -287,6 +308,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post("/api/campaigns", authenticate, requireRole(["admin", "marketing_manager"]), async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       const campaign = await storage.createCampaign(req.body);
       
       // Create activity
@@ -306,6 +331,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.put("/api/campaigns/:id", authenticate, requireRole(["admin", "marketing_manager"]), async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       const campaignId = parseInt(req.params.id);
       const updatedCampaign = await storage.updateCampaign(campaignId, req.body);
       
@@ -349,6 +378,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post("/api/tasks", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       console.log('Received task data:', req.body);
       
       // Обрабатываем даты правильно и обязательные поля
@@ -383,6 +416,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.put("/api/tasks/:id", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       const taskId = parseInt(req.params.id);
       const task = await storage.getTask(taskId);
       
@@ -426,6 +463,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/tasks/:id", authenticate, requireRole(writeRoles), async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       const taskId = parseInt(req.params.id);
       const task = await storage.getTask(taskId);
       
@@ -489,6 +530,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.get("/api/metrics/:userId", authenticate, async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       const userId = parseInt(req.params.userId);
       
       // Only admins, marketing managers, or the user themselves can view their metrics
@@ -511,8 +556,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // USER ROUTES
   app.get("/api/users", authenticate, async (req, res) => {
     try {
-      // Only admin can see all users
-      if (req.user.role !== "admin") {
+      if (!req.user || req.user.role !== "admin") {
         return res.status(403).json({ message: "Доступ запрещен" });
       }
       
@@ -533,6 +577,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create new user
   app.post("/api/users", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       const userData = insertUserSchema.parse(req.body);
       
       // Check if user with this email already exists
@@ -569,6 +617,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update user
   app.put("/api/users/:id", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       const userId = parseInt(req.params.id);
       const updateData = req.body;
       
@@ -603,6 +655,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Delete user
   app.delete("/api/users/:id", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       const userId = parseInt(req.params.id);
       
       // Prevent admin from deleting themselves
@@ -634,6 +690,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ACTIVITY ROUTES
   app.get("/api/activities", authenticate, async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       let activities;
       
       if (req.query.userId) {

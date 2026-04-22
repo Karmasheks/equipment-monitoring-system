@@ -4,10 +4,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import type { Equipment } from '../../../shared/schema';
 
 interface EquipmentFormProps {
-  initialData?: any;
-  onSave: (data: any) => void;
+  initialData?: Equipment;
+  onSave: (data: Equipment) => void;
   onCancel: () => void;
   isEdit?: boolean;
 }
